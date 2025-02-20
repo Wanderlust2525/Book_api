@@ -4,6 +4,10 @@ from rest_framework import serializers
 
 from utils.main import base64_to_image_file
 
+class BookSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Book
+        fields = '__all__'
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -16,9 +20,11 @@ class TagSerializer(serializers.ModelSerializer):
         model = Tag
         fields = '__all__'
 
+
 class GenreSerializer(serializers.ModelSerializer):
+
     class Meta:
-        model = Tag
+        model = Genre
         fields = '__all__'
 
 class ImageForBookSerializer(serializers.ModelSerializer):
@@ -62,6 +68,12 @@ class DetailBookSerializer(serializers.ModelSerializer):
         model = Book
         fields = '__all__'
 
+
+class CreateTagSerializer(serializers.Serializer):
+
+    class Meta:
+        model = Tag
+        exclude = ('book', 'user',)
 
 class CreateBookSerializer(serializers.ModelSerializer):
     images = serializers.ListSerializer(child=serializers.CharField(),required = False)
@@ -109,7 +121,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['password', 'email']
+        fields = ['password', 'email', 'first_name', 'last_name',]
 
     def create(self, validated_data):
         user = User.objects.create_user(

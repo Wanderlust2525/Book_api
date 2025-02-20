@@ -5,6 +5,7 @@ migrations
 db.sqlite3
 __pycache__
 static/static_root/
+static/static_dirs/
 
 .DS_Store
 .AppleDouble

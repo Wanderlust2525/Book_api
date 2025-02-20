@@ -12,9 +12,9 @@ from rest_framework.authentication import TokenAuthentication, SessionAuthentica
 from rest_framework.permissions import AllowAny
 
 from api.filters import BookFilter
-from api.mixins import SuperGenericAPIViews
+from api.mixins import SuperGenericAPIViews, UltraModelViewSet
 from api.paginations import SimplePagination
-from api.permissions import IsAdminOrReadOnly, IsOwnerOrReadOnly
+from api.permissions import IsAdminOrReadOnly, IsAuthor, IsOwner, IsOwnerOrReadOnly
 from api.serializers import BookImageSerializer, CategorySerializer, CreateBookSerializer, DetailBookSerializer, GenreSerializer, ListBookSerializer, RegisterSerializer,TagSerializer, UpdateBookSerializer
 from book.models import Book, BookImage, Category, Genre, Tag
 from rest_framework import generics
@@ -22,6 +22,7 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 
 
 class RegisterView(generics.CreateAPIView):
+
     queryset = get_user_model()
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
@@ -35,208 +36,201 @@ class RegisterView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
-class ListCreateBookApiView(SuperGenericAPIViews):
-    queryset = Book.objects.all()
-    serializer_classes = {
-        'GET': ListBookSerializer,
-        'POST': CreateBookSerializer
-    }
-    response_serializer = DetailBookSerializer
-    pagination_class = SimplePagination
 
+class BookViewSet(UltraModelViewSet):
+    queryset = Book.objects.all()
+    lookup_field = 'id'
+    serializer_classes = {
+        'list': ListBookSerializer,
+        'retrieve': DetailBookSerializer,
+        'create': CreateBookSerializer,
+        'update': UpdateBookSerializer,
+    }
+
+    pagination_class = SimplePagination
     filter_backends = [
         SearchFilter,
         DjangoFilterBackend,
         OrderingFilter,
     ]
+
     search_field = ['name', 'description', 'content', 'author_book']    
     ordering_fields = ['name', 'is_published', 'rating', 'views']
 
-    filterset_class = BookFilter
-    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    permission_classes_by_action = {
+        'list':  [AllowAny],
+        'retrieve': [AllowAny],
+        'create': [IsAuthenticated, IsAuthor],
+        'update': [IsAuthenticated, IsOwner],
+        'destroy': [IsAuthenticated, IsOwner],
+    }
     
 
-    def get(self, request, *args, **kwargs):
-        books = self.filter_queryset(self.get_queryset())
-        books = self.paginate_queryset(books)
-        serializer = self.get_serializer(books, many=True)
-        return self.get_paginated_response(serializer.data)
-        
-        # # SEARCH
-        # search = request.GET.get('search')
-        # if search:
-        #     books = books.filter(
-        #         Q(name__icontains=search) |
-        #         Q(description__icontains=search) |
-        #         Q(content__icontains=search) |
-        #         Q(tags__name__icontains=search)|
-        #         Q(genres__name__icontains=search)
-        #     ).distinct()
+class ImageViewSet(UltraModelViewSet):
+    queryset = BookImage.objects.all()
+    lookup_field = 'id'
+    serializer_class = BookImageSerializer
 
-        # # FILTERING
-        # filterset = BookFilter(queryset=books, data=request.GET)
-        # books = filterset.qs
-
-        # # ORDERING
-        # ordering_fields = ['name', 'rating', 'views','created_at']
-        # ordering: str = request.GET.get('ordering', '')
-        # tem_ordering = ordering.split('-')[1] if ordering.startswith('-') else ordering
-
-        # if tem_ordering in ordering_fields:
-        #     books = books.order_by(ordering)
-
-        # # PAGINATION
-        # book_count = books.count()
-
-        # page = int(request.GET.get('page', 1))
-        # page_size = int(request.GET.get('page_size', 12))
-        # pagin = Paginator(books, page_size)
-        # books = pagin.get_page(page)
-
-        # serializer = ListBookSerializer(books, many=True, context={'request': request})
-
-        # return Response({
-        #     'page': page,
-        #     'page_size': page_size,
-        #     'count': book_count,
-        #     'results': serializer.data
-        # })
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        book = serializer.save()
-        read_serializer = self.get_response_serializer(book)
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
-
-
-class UpdateDeleteDetailBookApiView(SuperGenericAPIViews):
-    queryset = Book.objects.all()
-    serializer_class = DetailBookSerializer
-    serializer_classes = {
-        'GET': DetailBookSerializer,
-        'PATCH': UpdateBookSerializer,
-        'PUT': UpdateBookSerializer
+    permission_classes_by_action = {
+        'list':  [AllowAny],
+        'retrieve': [AllowAny],
+        'create': [IsAuthenticated, IsAuthor],
+        'update': [IsAuthenticated],
+        'destroy': [IsAuthenticated,],
     }
 
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
-    lookup_field = 'id'
-    lookup_url_kwarg = 'id'
+# class CreateImageApiView(SuperGenericAPIViews):
+#     serializer_class = BookImageSerializer
 
-    def update(self, request, partial):
-        book = self.get_object()
-        serializer = self.get_serializer(instance=book, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        book = serializer.save()
-        read_serializer = self.get_serializer(book)
-        return Response(read_serializer.data)
-
-    def get(self, request, id, *args, **kwargs):
-        book = self.get_object()
-        serializer = self.get_serializer(book)
-        return Response(serializer.data)
-
-    def patch(self, request, *args, **kwargs):
-        return self.update(request,  True)
-
-    def put(self, request, *args, **kwargs):
-        return self.update(request,  False)
-
-    def delete(self, request,*args, **kwargs):
-        book = self.get_object()
-        book.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    
-class CreateImageApiView(SuperGenericAPIViews):
-    
-    def post(self, request, *args, **kwargs):
-        serializer = BookImageSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         serializer.save()
+#         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     
-class DeleteImageApiView(SuperGenericAPIViews):
-    
-    def delete(self, request, *args, **kwargs):
-        book_image = self.get_object()
-        book_image.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
-class ListCreateTagApiView(SuperGenericAPIViews):
+# class DeleteImageApiView(SuperGenericAPIViews):
+#     queryset = BookImage.objects.all()
+#     lookup_field = 'id'
 
+
+#     def delete(self, request, *args, **kwargs):
+#         book_image = self.get_object()
+#         book_image.delete()
+#         return Response(status=status.HTTP_204_NO_CONTENT)
+
+class TagViewSet(UltraModelViewSet):
     queryset = Tag.objects.all()
-    serializer_class = TagSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly,IsOwnerOrReadOnly]
-
-    def get(self, request, *args, **kwargs):
-        tags = self.get_queryset()
-        serializer = self.get_serializer(tags,many=True)
-        return Response(serializer.data)
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        tags = serializer.save()
-        read_serializer = self.get_response_serializer(tags)
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
-    
-class UpdateDeleteBookTagApiView(SuperGenericAPIViews):
-    queryset = Tag.objects.all()
-    serializer_class = TagSerializer
-
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
-
     lookup_field = 'id'
-    lookup_url_kwarg = 'id'
+    serializer_class = TagSerializer
+    # filter_backends = [
+    #     SearchFilter,
+    #     DjangoFilterBackend,
+    #     OrderingFilter,
+    # ]
 
-    def update(self, request, partial):
-        tag = self.get_object()
-        serializer = self.get_serializer(instance=tag, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        tag = serializer.save()
-        read_serializer = self.get_serializer(tag)
-        return Response(read_serializer.data)
+    permission_classes_by_action = {
+        'list':  [AllowAny],
+        'retrieve': [AllowAny],
+        'create': [IsAuthenticated,],
+        'update': [IsAuthenticated, ],
+        'destroy': [IsAuthenticated,]
+    }
 
-    def get(self, request, *args, **kwargs):
-        tag = self.get_object()
-        serializer = self.get_serializer(tag)
-        return Response(serializer.data)
 
-    def patch(self, request, *args, **kwargs):
-        return self.update(request, True)
+class GenreViewSet(UltraModelViewSet):
+    queryset = Genre.objects.all()
+    lookup_field = 'id'
+    serializer_class = GenreSerializer
 
-    def put(self, request, *args, **kwargs):
-        return self.update(request,  False)
+    # permission_classes_by_action = {
+    #     'list':  [AllowAny],
+    #     'retrieve': [AllowAny],
+    #     'create': [IsAuthenticated, IsAuthor],
+    #     'update': [IsAuthenticated],
+    #     'destroy': [IsAuthenticated],
+    # }
 
-    def delete(self, request,*args, **kwargs):
-        tag = self.get_object()
-        tag.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+class CategoryViewSet(UltraModelViewSet):
+    queryset = Category.objects.all()
+    lookup_field = 'id'
+    serializer_classes = {
+        'list': CategorySerializer,
+        'retrieve': CategorySerializer,
+        'create': CategorySerializer,
+        'update': CategorySerializer,
+    }
+    filter_backends = [
+        SearchFilter,
+        DjangoFilterBackend,
+        OrderingFilter,
+    ]
+
+    permission_classes_by_action = {
+        'list':  [AllowAny],
+        'retrieve': [AllowAny],
+        'create': [IsAuthenticated, IsAuthor],
+        'update': [IsAuthenticated, IsOwner],
+        'destroy': [IsAuthenticated, IsOwner],
+    }
+
+
+# class ListCreateTagApiView(SuperGenericAPIViews):
+
+#     queryset = Tag.objects.all()
+#     serializer_class = TagSerializer
+#     permission_classes = [IsAuthenticatedOrReadOnly,IsOwnerOrReadOnly]
+
+#     def get(self, request, *args, **kwargs):
+#         tags = self.get_queryset()
+#         serializer = self.get_serializer(tags,many=True)
+#         return Response(serializer.data)
+
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         tags = serializer.save()
+#         read_serializer = self.get_response_serializer(tags)
+#         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+    
+# class UpdateDeleteBookTagApiView(SuperGenericAPIViews):
+#     queryset = Tag.objects.all()
+#     serializer_class = TagSerializer
+
+#     permission_classes = [IsAuthenticatedOrReadOnly,]
+
+#     lookup_field = 'id'
+#     # lookup_url_kwarg = 'id'
+
+#     def update(self, request, partial):
+#         tag = self.get_object()
+#         serializer = self.get_serializer(instance=tag, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+#         tag = serializer.save()
+#         read_serializer = self.get_serializer(tag)
+#         return Response(read_serializer.data)
+
+#     def get(self, request, *args, **kwargs):
+#         tag = self.get_object()
+#         serializer = self.get_serializer(tag)
+#         return Response(serializer.data)
+
+#     def patch(self, request, *args, **kwargs):
+#         return self.update(request, True)
+
+#     def put(self, request, *args, **kwargs):
+#         return self.update(request,  False)
+
+#     def delete(self, request,*args, **kwargs):
+#         tag = self.get_object()
+#         tag.delete()
+#         return Response(status=status.HTTP_204_NO_CONTENT)
     
    
 
-class ListCreateGenreApiView(SuperGenericAPIViews):
+# class ListCreateGenreApiView(SuperGenericAPIViews):
 
-    queryset = Genre.objects.all()
-    serializer_class = GenreSerializer
-    response_serializer = GenreSerializer 
-    permission_classes = [IsAuthenticatedOrReadOnly]
+#     queryset = Genre.objects.all()
+#     serializer_class = GenreSerializer
+#     response_serializer = GenreSerializer 
+#     permission_classes = [IsAuthenticatedOrReadOnly]
 
-    def get(self, request, *args, **kwargs):
-        genres = self.get_queryset()
-        serializer = self.get_serializer(genres,many=True)
-        return Response(serializer.data)
+#     def get(self, request, *args, **kwargs):
+#         genres = self.get_queryset()
+#         serializer = self.get_serializer(genres,many=True)
+#         return Response(serializer.data)
 
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        genres = serializer.save()
-        read_serializer = self.get_response_serializer(genres)
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         genres = serializer.save()
+#         read_serializer = self.get_response_serializer(genres)
+#         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
     
-class UpdateDeleteBookGenreApiView(SuperGenericAPIViews):
+# class UpdateDeleteBookGenreApiView(SuperGenericAPIViews):
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
 
@@ -269,53 +263,53 @@ class UpdateDeleteBookGenreApiView(SuperGenericAPIViews):
         genre.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
-class ListCreateCategoryApiView(SuperGenericAPIViews):
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticatedOrReadOnly,IsOwnerOrReadOnly]
+# class ListCreateCategoryApiView(SuperGenericAPIViews):
+#     queryset = Category.objects.all()
+#     serializer_class = CategorySerializer
+#     permission_classes = [IsAuthenticatedOrReadOnly,IsOwnerOrReadOnly]
 
-    def get(self, request, *args, **kwargs):
-        categories = self.get_queryset()
-        serializer = self.get_serializer(categories,many=True)
-        return Response(serializer.data)
+#     def get(self, request, *args, **kwargs):
+#         categories = self.get_queryset()
+#         serializer = self.get_serializer(categories,many=True)
+#         return Response(serializer.data)
 
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        categories = serializer.save()
-        read_serializer = self.get_response_serializer(categories)
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)    
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         categories = serializer.save()
+#         read_serializer = self.get_response_serializer(categories)
+#         return Response(read_serializer.data, status=status.HTTP_201_CREATED)    
 
-class UpdateDeleteBookCategory(GenericAPIView):
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
+# class UpdateDeleteBookCategory(GenericAPIView):
+#     queryset = Category.objects.all()
+#     serializer_class = CategorySerializer
 
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+#     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
-    lookup_field = 'id'
-    lookup_url_kwarg = 'id'
+#     lookup_field = 'id'
+#     lookup_url_kwarg = 'id'
 
-    def update(self, request, partial):
-        category = self.get_object()
-        serializer = self.get_serializer(instance=category, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        category = serializer.save()
-        read_serializer = self.get_serializer(category)
-        return Response(read_serializer.data)
+#     def update(self, request, partial):
+#         category = self.get_object()
+#         serializer = self.get_serializer(instance=category, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+#         category = serializer.save()
+#         read_serializer = self.get_serializer(category)
+#         return Response(read_serializer.data)
 
-    def get(self, request, *args, **kwargs):
-        category = self.get_object()
-        serializer = self.get_serializer(category)
-        return Response(serializer.data)
+#     def get(self, request, *args, **kwargs):
+#         category = self.get_object()
+#         serializer = self.get_serializer(category)
+#         return Response(serializer.data)
 
-    def patch(self, request, *args, **kwargs):
-        return self.update(request,  True)
+#     def patch(self, request, *args, **kwargs):
+#         return self.update(request,  True)
 
-    def put(self, request, *args, **kwargs):
-        return self.update(request,  False)
+#     def put(self, request, *args, **kwargs):
+#         return self.update(request,  False)
 
-    def delete(self, request,*args, **kwargs):
-        category = self.get_object()
-        category.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+#     def delete(self, request,*args, **kwargs):
+#         category = self.get_object()
+#         category.delete()
+#         return Response(status=status.HTTP_204_NO_CONTENT)
     

@@ -10,20 +10,18 @@ class UserAdmin(BaseUserAdmin):
     list_display = (
         'id',
         'email',
-        'phone',
         'get_full_name',
         'role',
         'get_avatar',
     )
     list_display_links = ('id', 'email',)
-    search_fields = ('first_name', 'last_name', 'email', 'phone')
+    search_fields = ('first_name', 'last_name', 'email',)
     filter_horizontal = ('groups', 'user_permissions')
     list_filter = ('is_staff', 'is_superuser', 'is_active', 'groups')
     ordering = ('-date_joined',)
     fieldsets = (
         (None, {'fields': (
             'email',
-            'phone',
             'password',
         )}),
         (_('Personal info'), {'fields': (
@@ -59,7 +57,6 @@ class UserAdmin(BaseUserAdmin):
             'classes': ('wide',),
             'fields': (
                 'email',
-                'phone',
                 'password1',
                 'password2',
             ),

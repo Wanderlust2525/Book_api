@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User
+from account.services import User
 from rest_framework import serializers
 
 
@@ -13,7 +13,6 @@ class ReadUserSerializer(serializers.ModelSerializer):
         fields = (
             'id',
             'avatar',
-            'phone',
             'first_name',
             'last_name',
             'email',

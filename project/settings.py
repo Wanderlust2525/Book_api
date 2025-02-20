@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'django_cleanup',
     'rest_framework',
     'rest_framework.authtoken',
+    'drf_yasg',
 
 
     # apps
